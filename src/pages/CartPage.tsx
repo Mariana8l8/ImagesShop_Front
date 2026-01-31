@@ -71,14 +71,16 @@ export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
             {items.map((item) => (
               <div key={item.imageId} className="cart-item-card">
                 <img
-                  src={item.image.watermarkedUrl}
-                  alt={item.image.title}
+                  src={
+                    item.image.watermarkedUrl ?? item.image.originalUrl ?? ""
+                  }
+                  alt={item.image.title ?? "Image"}
                   className="cart-item-image"
                 />
 
                 <div className="cart-item-details">
-                  <h3>{item.image.title}</h3>
-                  <p>{item.image.description}</p>
+                  <h3>{item.image.title ?? "Untitled"}</h3>
+                  <p>{item.image.description ?? ""}</p>
                   <p className="cart-item-price">${item.image.price}</p>
                 </div>
 

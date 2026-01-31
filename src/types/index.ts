@@ -1,24 +1,25 @@
 export interface Category {
   id: string;
-  name: string;
+  name: string | null;
 }
 
 export interface Image {
   id: string;
-  title: string;
-  description: string;
+  title: string | null;
+  description: string | null;
   price: number;
-  watermarkedUrl: string;
-  originalUrl: string;
+  watermarkedUrl: string | null;
+  originalUrl: string | null;
   categoryId: string;
 }
 
 export interface User {
   id: string;
-  name: string;
-  email: string;
+  name: string | null;
+  email: string | null;
   balance: number;
-  wishlistIds: string[];
+  role: UserRole;
+  wishlistIds: string[] | null;
 }
 
 export interface CartItem {
@@ -44,9 +45,9 @@ export interface Order {
   createdAt: string;
   status: OrderStatus;
   totalAmount: number;
-  currency: string;
-  notes: string;
-  items: OrderItem[];
+  currency: string | null;
+  notes: string | null;
+  items: OrderItem[] | null;
 }
 
 export const OrderStatus = {
@@ -61,15 +62,37 @@ export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
 export interface PurchaseHistory {
   id: string;
-  userName: string;
-  userEmail: string;
+  userName: string | null;
+  userEmail: string | null;
   imageId: string;
   imagePrice: number;
-  imageTitle: string;
+  imageTitle: string | null;
   purchasedAt: string;
 }
 
 export interface Tag {
   id: string;
-  name: string;
+  name: string | null;
 }
+
+export interface RegisterRequest {
+  name?: string | null;
+  email?: string | null;
+  password?: string | null;
+}
+
+export interface LoginRequest {
+  email?: string | null;
+  password?: string | null;
+}
+
+export interface RefreshRequest {
+  refreshToken?: string | null;
+}
+
+export const UserRole = {
+  User: 0,
+  Admin: 1,
+} as const;
+
+export type UserRole = (typeof UserRole)[keyof typeof UserRole];

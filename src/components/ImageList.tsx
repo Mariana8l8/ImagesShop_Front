@@ -5,9 +5,17 @@ interface ImageListProps {
   images: Image[];
   loading: boolean;
   onAddToCart: (image: Image) => void;
+  favorites: string[];
+  onToggleFavorite: (imageId: string) => void;
 }
 
-export function ImageList({ images, loading, onAddToCart }: ImageListProps) {
+export function ImageList({
+  images,
+  loading,
+  onAddToCart,
+  favorites,
+  onToggleFavorite,
+}: ImageListProps) {
   if (loading) {
     return (
       <div className="loading">
@@ -27,7 +35,13 @@ export function ImageList({ images, loading, onAddToCart }: ImageListProps) {
   return (
     <div className="image-list">
       {images.map((image) => (
-        <ImageCard key={image.id} image={image} onAddToCart={onAddToCart} />
+        <ImageCard
+          key={image.id}
+          image={image}
+          onAddToCart={onAddToCart}
+          isFavorite={favorites.includes(image.id)}
+          onToggleFavorite={onToggleFavorite}
+        />
       ))}
     </div>
   );
