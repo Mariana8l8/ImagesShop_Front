@@ -5,6 +5,7 @@ import { Gallery } from "./pages/Gallery";
 import { CartPage } from "./pages/CartPage";
 import { AdminPage } from "./pages/Admin";
 import { Login } from "./pages/Login";
+import { TopUpPage } from "./pages/TopUp";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { imagesAPI, categoriesAPI, tagsAPI, ordersAPI } from "./services/api";
 import { useAuth } from "./context/AuthContext";
@@ -216,7 +217,6 @@ function App() {
         theme={theme}
         onToggleTheme={handleThemeToggle}
         onLogout={logout}
-        onTopUp={() => topUpBalance(100)}
         isAuthenticated={isAuthenticated}
       />
 
@@ -260,6 +260,14 @@ function App() {
                 onRemove={handleRemoveFromCart}
                 onQuantityChange={handleQuantityChange}
               />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/topup"
+          element={
+            <ProtectedRoute>
+              <TopUpPage onTopUp={topUpBalance} />
             </ProtectedRoute>
           }
         />

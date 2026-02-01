@@ -17,7 +17,7 @@ interface AuthContextValue {
   login: (payload: LoginRequest) => Promise<User | null>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
-  topUpBalance: (amount?: number) => void;
+  topUpBalance: (amount: number) => Promise<User | null>;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -90,10 +90,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const topUpBalance = (amount = 100) => {
-    setUser((prev) =>
-      prev ? { ...prev, balance: prev.balance + amount } : prev,
-    );
+  const topUpBalance = async (amount: number) => {
+    if (!user) return null;
+
+    const safeAmount = Math.max(0, amount);
+    if (!safeAmount) return null;
+
+    try {
+      const res = await usersAPI.topUp(safeAmount);
+      if (res?.data) {
+        setUser(res.data);
+      }
+      const refreshed = await refreshUser();
+      return refreshed ?? res?.data ?? user;
+    } catch (error) {
+      console.error("Failed to top up balance", error);
+      return null;
+    }
   };
 
   const value: AuthContextValue = {
