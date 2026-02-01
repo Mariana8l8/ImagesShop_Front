@@ -6,6 +6,8 @@ interface ImageCardProps {
   onAddToCart: (image: Image) => void;
   isFavorite: boolean;
   onToggleFavorite: (imageId: string) => void;
+  onBuyNow: (image: Image) => void;
+  isPurchased: boolean;
 }
 
 export function ImageCard({
@@ -13,6 +15,8 @@ export function ImageCard({
   onAddToCart,
   isFavorite,
   onToggleFavorite,
+  onBuyNow,
+  isPurchased,
 }: ImageCardProps) {
   const title = image.title ?? "Untitled";
   const description = image.description ?? "";
@@ -23,6 +27,12 @@ export function ImageCard({
     onAddToCart(image);
     setIsAdded(true);
     setTimeout(() => setIsAdded(false), 1500);
+  };
+
+  const handleBuyNow = () => {
+    setIsAdded(true);
+    onBuyNow(image);
+    setTimeout(() => setIsAdded(false), 1200);
   };
 
   const handleView = () => {
@@ -53,9 +63,12 @@ export function ImageCard({
             </button>
             <button
               className={`primary ${isAdded ? "added" : ""}`}
-              onClick={handleClick}
+              onClick={handleBuyNow}
             >
-              {isAdded ? "Added" : "Buy now"}
+              {isAdded ? "Processing" : "Buy now"}
+            </button>
+            <button className="ghost-btn" onClick={handleClick}>
+              {isPurchased ? "Download HQ" : "Add to cart"}
             </button>
           </div>
         </div>

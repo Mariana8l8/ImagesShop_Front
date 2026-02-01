@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { Header } from "./components/Header";
 import { Gallery } from "./pages/Gallery";
 import { CartPage } from "./pages/CartPage";
-import { imagesAPI, categoriesAPI, tagsAPI, usersAPI } from "./services/api";
-import type { Image, CartItemWithCount, Category, Tag, User } from "./types";
+import { AdminPage } from "./pages/Admin";
+import { Login } from "./pages/Login";
+import { ProtectedRoute } from "./components/ProtectedRoute";
+import { imagesAPI, categoriesAPI, tagsAPI, ordersAPI } from "./services/api";
+import { useAuth } from "./context/AuthContext";
+import type { Image, CartItemWithCount, Category, Tag } from "./types";
 import "./App.css";
 
 function App() {
   const [images, setImages] = useState<Image[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 0]);
@@ -22,6 +25,10 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [purchasedIds, setPurchasedIds] = useState<string[]>([]);
+
+  const { user, isAuthenticated, topUpBalance, logout, refreshUser } =
+    useAuth();
 
   useEffect(() => {
     loadData();
@@ -34,17 +41,15 @@ function App() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [imagesRes, categoriesRes, tagsRes, usersRes] = await Promise.all([
+      const [imagesRes, categoriesRes, tagsRes] = await Promise.all([
         imagesAPI.getAll(),
         categoriesAPI.getAll(),
         tagsAPI.getAll(),
-        usersAPI.getAll(),
       ]);
 
       setImages(imagesRes.data);
       setCategories(categoriesRes.data);
       setTags(tagsRes.data);
-      setUsers(usersRes.data);
       setError(null);
     } catch (err) {
       console.error("Error loading images:", err);
@@ -135,8 +140,6 @@ function App() {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
 
-  const currentUser = users.length > 0 ? users[0] : null;
-
   const handleAddToCart = (image: Image) => {
     const existingItem = cartItems.find((item) => item.imageId === image.id);
 
@@ -174,65 +177,109 @@ function App() {
     0,
   );
 
+  const handleBuyNow = async (image: Image) => {
+    if (!isAuthenticated) {
+      alert("Потрібен логін для покупки");
+      return;
+    }
+    if ((user?.balance ?? 0) < image.price) {
+      alert("Недостатньо коштів. Поповніть баланс.");
+      return;
+    }
+
+    try {
+      await ordersAPI.buyImage(image.id);
+      await refreshUser();
+      setPurchasedIds((prev) =>
+        prev.includes(image.id) ? prev : [...prev, image.id],
+      );
+      alert("Покупка успішна! Тепер доступне HQ-завантаження.");
+    } catch (err) {
+      console.error("Buy failed", err);
+      alert("Не вдалося купити. Спробуйте пізніше.");
+    }
+  };
+
   return (
-    <Router>
-      <div className="app" data-theme={theme}>
-        <Header
-          cartCount={totalCartCount}
-          favoritesCount={favorites.length}
-          showFavorites={showFavorites}
-          onToggleFavorites={() => setShowFavorites((v) => !v)}
-          searchTerm={searchTerm}
-          onSearchChange={setSearchTerm}
-          categories={categories}
-          selectedCategories={selectedCategories}
-          onToggleCategory={handleCategoryToggle}
-          currentUser={currentUser}
-          theme={theme}
-          onToggleTheme={handleThemeToggle}
+    <div className="app" data-theme={theme}>
+      <Header
+        cartCount={totalCartCount}
+        favoritesCount={favorites.length}
+        showFavorites={showFavorites}
+        onToggleFavorites={() => setShowFavorites((v) => !v)}
+        searchTerm={searchTerm}
+        onSearchChange={setSearchTerm}
+        categories={categories}
+        selectedCategories={selectedCategories}
+        onToggleCategory={handleCategoryToggle}
+        currentUser={user}
+        theme={theme}
+        onToggleTheme={handleThemeToggle}
+        onLogout={logout}
+        onTopUp={() => topUpBalance(100)}
+        isAuthenticated={isAuthenticated}
+      />
+
+      {error && <div className="error-message">{error}</div>}
+
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route
+          path="/"
+          element={
+            <Gallery
+              images={filteredImages}
+              categories={categories}
+              tags={tags}
+              selectedCategories={selectedCategories}
+              onCategoryToggle={handleCategoryToggle}
+              onClearCategories={() => setSelectedCategories([])}
+              selectedTags={selectedTags}
+              onTagToggle={handleTagToggle}
+              onClearTags={() => setSelectedTags([])}
+              priceRange={priceRange}
+              priceBounds={priceBounds}
+              onPriceRangeChange={setPriceRange}
+              favorites={favorites}
+              showFavorites={showFavorites}
+              onShowFavoritesChange={setShowFavorites}
+              loading={loading}
+              onAddToCart={handleAddToCart}
+              onToggleFavorite={handleToggleFavorite}
+              onBuyNow={handleBuyNow}
+              purchasedIds={purchasedIds}
+            />
+          }
         />
-
-        {error && <div className="error-message">{error}</div>}
-
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <Gallery
-                images={filteredImages}
-                categories={categories}
-                tags={tags}
-                selectedCategories={selectedCategories}
-                onCategoryToggle={handleCategoryToggle}
-                onClearCategories={() => setSelectedCategories([])}
-                selectedTags={selectedTags}
-                onTagToggle={handleTagToggle}
-                onClearTags={() => setSelectedTags([])}
-                priceRange={priceRange}
-                priceBounds={priceBounds}
-                onPriceRangeChange={setPriceRange}
-                favorites={favorites}
-                showFavorites={showFavorites}
-                onShowFavoritesChange={setShowFavorites}
-                loading={loading}
-                onAddToCart={handleAddToCart}
-                onToggleFavorite={handleToggleFavorite}
-              />
-            }
-          />
-          <Route
-            path="/cart"
-            element={
+        <Route
+          path="/cart"
+          element={
+            <ProtectedRoute>
               <CartPage
                 items={cartItems}
                 onRemove={handleRemoveFromCart}
                 onQuantityChange={handleQuantityChange}
               />
-            }
-          />
-        </Routes>
-      </div>
-    </Router>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute requiredRole="Admin">
+              <AdminPage
+                categories={categories}
+                tags={tags}
+                onCreatedCategory={(cat) => setCategories([...categories, cat])}
+                onCreatedTag={(tag) => setTags([...tags, tag])}
+                onCreatedImage={(img) => setImages([...images, img])}
+              />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </div>
   );
 }
 

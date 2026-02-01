@@ -7,6 +7,8 @@ interface ImageListProps {
   onAddToCart: (image: Image) => void;
   favorites: string[];
   onToggleFavorite: (imageId: string) => void;
+  onBuyNow: (image: Image) => void;
+  purchasedIds: string[];
 }
 
 export function ImageList({
@@ -15,6 +17,8 @@ export function ImageList({
   onAddToCart,
   favorites,
   onToggleFavorite,
+  onBuyNow,
+  purchasedIds,
 }: ImageListProps) {
   if (loading) {
     return (
@@ -41,6 +45,8 @@ export function ImageList({
           onAddToCart={onAddToCart}
           isFavorite={favorites.includes(image.id)}
           onToggleFavorite={onToggleFavorite}
+          onBuyNow={onBuyNow}
+          isPurchased={purchasedIds.includes(image.id)}
         />
       ))}
     </div>

@@ -90,6 +90,25 @@ export interface RefreshRequest {
   refreshToken?: string | null;
 }
 
+export interface AuthTokens {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  refreshToken: string;
+}
+
+export interface DecodedJwtPayload {
+  sub?: string;
+  email?: string;
+  name?: string;
+  role?: keyof typeof UserRole | number | string;
+  exp?: number;
+  [key: string]: unknown;
+}
+
 export const UserRole = {
   User: 0,
   Admin: 1,

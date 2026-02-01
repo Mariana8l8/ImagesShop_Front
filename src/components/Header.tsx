@@ -15,6 +15,9 @@ interface HeaderProps {
   currentUser: User | null;
   theme: "light" | "dark";
   onToggleTheme: () => void;
+  onLogout: () => void;
+  onTopUp: () => void;
+  isAuthenticated: boolean;
 }
 
 export function Header({
@@ -30,6 +33,9 @@ export function Header({
   currentUser,
   theme,
   onToggleTheme,
+  onLogout,
+  onTopUp,
+  isAuthenticated,
 }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -99,7 +105,31 @@ export function Header({
             {theme === "light" ? "🌙" : "☀️"}
           </button>
 
-          <div className="avatar">{currentUser?.name?.charAt(0) ?? "U"}</div>
+          {isAuthenticated ? (
+            <div className="user-block">
+              <div className="balance">
+                <span>${currentUser?.balance?.toFixed(0) ?? 0}</span>
+                <button className="text-link" onClick={onTopUp}>
+                  Top up +100$
+                </button>
+              </div>
+              {currentUser?.role === 1 && (
+                <Link to="/admin" className="text-link">
+                  Admin
+                </Link>
+              )}
+              <button className="text-link" onClick={onLogout}>
+                Logout
+              </button>
+              <div className="avatar">
+                {currentUser?.name?.charAt(0) ?? currentUser?.email?.[0] ?? "U"}
+              </div>
+            </div>
+          ) : (
+            <Link to="/login" className="text-link">
+              Login
+            </Link>
+          )}
         </div>
       </div>
     </header>

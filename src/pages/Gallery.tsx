@@ -20,6 +20,8 @@ interface GalleryProps {
   loading: boolean;
   onAddToCart: (image: Image) => void;
   onToggleFavorite: (imageId: string) => void;
+  onBuyNow: (image: Image) => void;
+  purchasedIds: string[];
 }
 
 export function Gallery({
@@ -41,6 +43,8 @@ export function Gallery({
   loading,
   onAddToCart,
   onToggleFavorite,
+  onBuyNow,
+  purchasedIds,
 }: GalleryProps) {
   const [minPrice, maxPrice] = priceRange;
   const [minBound, maxBound] = priceBounds;
@@ -171,6 +175,8 @@ export function Gallery({
             onAddToCart={onAddToCart}
             favorites={favorites}
             onToggleFavorite={onToggleFavorite}
+            onBuyNow={onBuyNow}
+            purchasedIds={purchasedIds}
           />
         </div>
       </section>

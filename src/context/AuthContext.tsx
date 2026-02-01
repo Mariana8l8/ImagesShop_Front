@@ -1,0 +1,116 @@
+/* eslint-disable react-refresh/only-export-components */
+import { createContext, useContext, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import {
+  authAPI,
+  registerLogoutHandler,
+  setAuthTokens,
+  loadPersistedTokens,
+} from "../services/api";
+import { usersAPI } from "../services/api";
+import type { LoginRequest, User } from "../types";
+
+interface AuthContextValue {
+  user: User | null;
+  isAuthenticated: boolean;
+  isAuthLoading: boolean;
+  login: (payload: LoginRequest) => Promise<User | null>;
+  logout: () => Promise<void>;
+  refreshUser: () => Promise<User | null>;
+  topUpBalance: (amount?: number) => void;
+}
+
+const AuthContext = createContext<AuthContextValue | undefined>(undefined);
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    registerLogoutHandler(() => {
+      setUser(null);
+      setAuthTokens(null);
+      navigate("/login", { replace: true });
+    });
+
+    const tokens = loadPersistedTokens();
+    if (!tokens) {
+      setIsAuthLoading(false);
+      return;
+    }
+
+    usersAPI
+      .me()
+      .then((res) => setUser(res.data))
+      .catch(() => {
+        setAuthTokens(null);
+        setUser(null);
+      })
+      .finally(() => setIsAuthLoading(false));
+  }, [navigate]);
+
+  const refreshUser = async () => {
+    try {
+      const res = await usersAPI.me();
+      setUser(res.data);
+      return res.data;
+    } catch (error) {
+      console.error("Failed to refresh user", error);
+      return null;
+    }
+  };
+
+  const login = async (payload: LoginRequest) => {
+    setIsAuthLoading(true);
+    try {
+      const res = await authAPI.login(payload);
+      setAuthTokens(res.data);
+      const me = await refreshUser();
+      return me;
+    } catch (error) {
+      console.error("Login failed", error);
+      setAuthTokens(null);
+      setUser(null);
+      throw error;
+    } finally {
+      setIsAuthLoading(false);
+    }
+  };
+
+  const logout = async () => {
+    try {
+      await authAPI.logout();
+    } catch (error) {
+      console.warn("Logout call failed", error);
+    } finally {
+      setAuthTokens(null);
+      setUser(null);
+      navigate("/login", { replace: true });
+    }
+  };
+
+  const topUpBalance = (amount = 100) => {
+    setUser((prev) =>
+      prev ? { ...prev, balance: prev.balance + amount } : prev,
+    );
+  };
+
+  const value: AuthContextValue = {
+    user,
+    isAuthenticated: Boolean(user),
+    isAuthLoading,
+    login,
+    logout,
+    refreshUser,
+    topUpBalance,
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+  return ctx;
+}

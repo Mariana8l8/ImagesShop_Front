@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { ordersAPI } from "../services/api";
+import { useAuth } from "../context/AuthContext";
 import type { CartItemWithCount, Order, OrderStatus } from "../types";
 
 interface CartPageProps {
@@ -9,6 +10,7 @@ interface CartPageProps {
 }
 
 export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
+  const { user } = useAuth();
   const total = items.reduce(
     (sum, item) => sum + item.image.price * item.quantity,
     0,
@@ -21,7 +23,11 @@ export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
     }
 
     try {
-      const userId = "00000000-0000-0000-0000-000000000001";
+      const userId = user?.id;
+      if (!userId) {
+        alert("Потрібно увійти, щоб оформити замовлення");
+        return;
+      }
 
       const order: Order = {
         id: crypto.randomUUID(),
