@@ -18,6 +18,7 @@ interface AuthContextValue {
   logout: () => Promise<void>;
   refreshUser: () => Promise<User | null>;
   topUpBalance: (amount: number) => Promise<User | null>;
+  fakeTopUp: (amount: number) => User | null;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -109,6 +110,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const fakeTopUp = (amount: number) => {
+    if (!user) return null;
+    const safeAmount = Math.max(0, amount);
+    if (!safeAmount) return null;
+    const updated: User = { ...user, balance: user.balance + safeAmount };
+    setUser(updated);
+    return updated;
+  };
+
   const value: AuthContextValue = {
     user,
     isAuthenticated: Boolean(user),
@@ -117,6 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     logout,
     refreshUser,
     topUpBalance,
+    fakeTopUp,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

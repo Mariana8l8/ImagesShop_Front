@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
 import type { Category, User } from "../types";
 
 interface HeaderProps {
@@ -38,6 +39,13 @@ export function Header({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const location = useLocation();
   const isLoginPage = location.pathname === "/login";
+  const isTopUpPage = location.pathname === "/topup";
+  const isAdminPage = location.pathname === "/admin";
+  const { fakeTopUp } = useAuth();
+
+  const handleFakeTopUp = (amt = 100) => {
+    fakeTopUp?.(amt);
+  };
 
   return (
     <header className="header">
@@ -50,7 +58,7 @@ export function Header({
             </div>
           </Link>
 
-          {!isLoginPage && (
+          {!isLoginPage && !isTopUpPage && !isAdminPage && (
             <div className="header-search">
               <input
                 type="text"
@@ -63,7 +71,7 @@ export function Header({
         </div>
 
         <div className="header-actions">
-          {!isLoginPage && (
+          {!isLoginPage && !isTopUpPage && !isAdminPage && (
             <>
               <div className="dropdown">
                 <button
@@ -119,17 +127,31 @@ export function Header({
                   ${currentUser?.balance?.toFixed(0) ?? 0}
                 </span>
               </div>
-              <Link to="/topup" className="pill-button">
-                Top up
-              </Link>
-              {currentUser?.role === 1 && (
+              {!isTopUpPage && currentUser?.role === 1 ? (
+                <button
+                  type="button"
+                  className="pill-button"
+                  onClick={() => handleFakeTopUp(100)}
+                >
+                  Add $100
+                </button>
+              ) : (
+                !isTopUpPage && (
+                  <Link to="/topup" className="pill-button">
+                    Top up
+                  </Link>
+                )
+              )}
+              {currentUser?.role === 1 && !isAdminPage && (
                 <Link to="/admin" className="text-link">
                   Admin
                 </Link>
               )}
-              <button className="text-link" onClick={onLogout}>
-                Logout
-              </button>
+              {!isTopUpPage && (
+                <button className="text-link" onClick={onLogout}>
+                  Logout
+                </button>
+              )}
               <div className="avatar">
                 {currentUser?.name?.charAt(0) ?? currentUser?.email?.[0] ?? "U"}
               </div>

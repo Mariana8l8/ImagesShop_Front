@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
 import type { User } from "../types";
 
 interface TopUpPageProps {
@@ -11,7 +10,6 @@ const PRESET_AMOUNTS = [25, 50, 100, 200];
 
 export function TopUpPage({ onTopUp }: TopUpPageProps) {
   const navigate = useNavigate();
-  const { user } = useAuth();
   const [amount, setAmount] = useState<number>(PRESET_AMOUNTS[2]);
   const [customAmount, setCustomAmount] = useState("100");
   const [cardNumber, setCardNumber] = useState("");
@@ -143,23 +141,8 @@ export function TopUpPage({ onTopUp }: TopUpPageProps) {
           </div>
 
           <button type="submit" className="primary-pay">
-            <span role="img" aria-label="lock">
-              🔒
-            </span>{" "}
             Оплатити {formattedTotal}
           </button>
-
-          <div className="topup-footer">
-            <div className="topup-hint">
-              Поточний баланс: ${user?.balance?.toFixed(2) ?? "0.00"}
-            </div>
-            <div className="card-logos" aria-hidden>
-              <span>Visa</span>
-              <span>MC</span>
-              <span>AmEx</span>
-              <span>Apple Pay</span>
-            </div>
-          </div>
         </form>
       </div>
     </div>
