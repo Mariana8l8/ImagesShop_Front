@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   authAPI,
@@ -25,11 +25,23 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const userRef = useRef<User | null>(null);
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const navigate = useNavigate();
 
   useEffect(() => {
     registerLogoutHandler(() => {
+      try {
+        if (userRef.current?.id)
+          sessionStorage.removeItem(
+            `imageshop_fake_balance_${userRef.current.id}`,
+          );
+      } catch {
+        /* ignore */
+      }
       setUser(null);
       setAuthTokens(null);
       navigate("/login", { replace: true });
@@ -43,7 +55,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     usersAPI
       .me()
-      .then((res) => setUser(res.data))
+      .then((res) => {
+        try {
+          const key = `imageshop_fake_balance_${res.data.id}`;
+          const stored = sessionStorage.getItem(key);
+          if (stored) {
+            const parsed = Number(stored);
+            if (!Number.isNaN(parsed)) res.data.balance = parsed;
+          }
+        } catch {
+          /* ignore */
+        }
+        setUser(res.data);
+      })
       .catch(() => {
         setAuthTokens(null);
         setUser(null);
@@ -54,6 +78,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     try {
       const res = await usersAPI.me();
+      try {
+        const key = `imageshop_fake_balance_${res.data.id}`;
+        const stored = sessionStorage.getItem(key);
+        if (stored) {
+          const parsed = Number(stored);
+          if (!Number.isNaN(parsed)) res.data.balance = parsed;
+        }
+      } catch {
+        /* ignore */
+      }
       setUser(res.data);
       return res.data;
     } catch (error) {
@@ -66,7 +100,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setIsAuthLoading(true);
     try {
       const res = await authAPI.login(payload);
-      setAuthTokens(res.data);
+      const tokens = res?.data?.accessToken
+        ? {
+            accessToken: res.data.accessToken,
+            refreshToken: res.data.refreshToken ?? null,
+          }
+        : null;
+      setAuthTokens(tokens);
       const me = await refreshUser();
       return me;
     } catch (error) {
@@ -85,6 +125,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.warn("Logout call failed", error);
     } finally {
+      try {
+        if (user?.id)
+          sessionStorage.removeItem(`imageshop_fake_balance_${user.id}`);
+      } catch {
+        /* ignore */
+      }
       setAuthTokens(null);
       setUser(null);
       navigate("/login", { replace: true });
@@ -116,6 +162,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!safeAmount) return null;
     const updated: User = { ...user, balance: user.balance + safeAmount };
     setUser(updated);
+    try {
+      const key = `imageshop_fake_balance_${user.id}`;
+      sessionStorage.setItem(key, String(updated.balance));
+    } catch {
+      /* ignore */
+    }
     return updated;
   };
 

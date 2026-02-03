@@ -92,12 +92,31 @@ export interface RefreshRequest {
 
 export interface AuthTokens {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string | null;
 }
 
 export interface AuthResponse {
   accessToken: string;
-  refreshToken: string;
+  refreshToken?: string | null;
+}
+
+export interface AddToCartRequest {
+  imageId: string;
+}
+
+export interface CartItemResponse {
+  imageId?: string;
+  image?: Image;
+  quantity?: number;
+}
+
+export type CartResponse =
+  | CartItemResponse[]
+  | { items: CartItemResponse[] }
+  | string[];
+
+export interface UserTransaction {
+  [key: string]: unknown;
 }
 
 export interface DecodedJwtPayload {

@@ -21,6 +21,7 @@ const API_BASE_URL =
 
 const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
   },
@@ -35,19 +36,23 @@ const ACCESS_KEY = "imageshop_access_token";
 const REFRESH_KEY = "imageshop_refresh_token";
 
 const persistTokens = (tokens: AuthTokens | null) => {
-  if (!tokens) {
+  if (!tokens?.accessToken) {
     sessionStorage.removeItem(ACCESS_KEY);
     sessionStorage.removeItem(REFRESH_KEY);
     return;
   }
   sessionStorage.setItem(ACCESS_KEY, tokens.accessToken);
-  sessionStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+  if (tokens.refreshToken) {
+    sessionStorage.setItem(REFRESH_KEY, tokens.refreshToken);
+  } else {
+    sessionStorage.removeItem(REFRESH_KEY);
+  }
 };
 
 export const loadPersistedTokens = (): AuthTokens | null => {
   const accessToken = sessionStorage.getItem(ACCESS_KEY);
   const refreshToken = sessionStorage.getItem(REFRESH_KEY);
-  if (accessToken && refreshToken) {
+  if (accessToken) {
     inMemoryTokens = { accessToken, refreshToken };
     return inMemoryTokens;
   }
@@ -69,25 +74,19 @@ const getRefreshToken = () => inMemoryTokens?.refreshToken ?? null;
 const refreshAccessToken = async (): Promise<string | null> => {
   if (isRefreshing) return refreshPromise;
 
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return null;
-
   isRefreshing = true;
   refreshPromise = api
-    .post<AuthResponse>(
-      "/Auth/refresh",
-      { refreshToken },
-      { skipAuthRefresh: true },
-    )
+    .post<AuthResponse>("/Auth/refresh", null, { skipAuthRefresh: true })
     .then((res) => {
-      const { accessToken, refreshToken: nextRefresh } =
-        res.data as AuthResponse;
+      const data = (res.data ?? {}) as Partial<AuthResponse>;
+      const accessToken = data.accessToken ?? null;
+      if (!accessToken) return null;
       const nextTokens: AuthTokens = {
         accessToken,
-        refreshToken: nextRefresh,
+        refreshToken: data.refreshToken ?? getRefreshToken() ?? null,
       };
       setAuthTokens(nextTokens);
-      return nextTokens.accessToken;
+      return accessToken;
     })
     .catch((err) => {
       setAuthTokens(null);

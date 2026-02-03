@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { Header } from "./components/Header";
 import { Gallery } from "./pages/Gallery";
@@ -7,9 +7,23 @@ import { AdminPage } from "./pages/Admin";
 import { Login } from "./pages/Login";
 import { TopUpPage } from "./pages/TopUp";
 import { ProtectedRoute } from "./components/ProtectedRoute";
-import { imagesAPI, categoriesAPI, tagsAPI, ordersAPI } from "./services/api";
+import {
+  imagesAPI,
+  categoriesAPI,
+  tagsAPI,
+  ordersAPI,
+  cartAPI,
+  purchasesAPI,
+} from "./services/api";
 import { useAuth } from "./context/AuthContext";
-import type { Image, CartItemWithCount, Category, Tag } from "./types";
+import type {
+  Image,
+  CartItemWithCount,
+  Category,
+  Tag,
+  CartItemResponse,
+  CartResponse,
+} from "./types";
 import "./App.css";
 
 function App() {
@@ -27,6 +41,11 @@ function App() {
   const [error, setError] = useState<string | null>(null);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [purchasedIds, setPurchasedIds] = useState<string[]>([]);
+  const [viewImage, setViewImage] = useState<Image | null>(null);
+  const [buyImage, setBuyImage] = useState<Image | null>(null);
+  const [downloadImage, setDownloadImage] = useState<Image | null>(null);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
+  const [purchaseLoading, setPurchaseLoading] = useState(false);
 
   const { user, isAuthenticated, topUpBalance, logout, refreshUser } =
     useAuth();
@@ -60,6 +79,90 @@ function App() {
       setLoading(false);
     }
   };
+
+  const normalizeCartItems = useCallback(
+    (data: CartResponse): CartItemWithCount[] => {
+      const rawItems = Array.isArray(data)
+        ? data
+        : data && "items" in data && Array.isArray(data.items)
+          ? data.items
+          : [];
+
+      return rawItems
+        .map((item) => {
+          if (typeof item === "string") {
+            const image = images.find((img) => img.id === item);
+            if (!image) return null;
+            return { imageId: item, image, quantity: 1 } as CartItemWithCount;
+          }
+          const typed = item as CartItemResponse;
+          const imageId = typed.imageId ?? typed.image?.id;
+          if (!imageId) return null;
+          const image = typed.image ?? images.find((img) => img.id === imageId);
+          if (!image) return null;
+          const quantity =
+            typeof typed.quantity === "number" && typed.quantity > 0
+              ? typed.quantity
+              : 1;
+          return { imageId, image, quantity } as CartItemWithCount;
+        })
+        .filter(Boolean) as CartItemWithCount[];
+    },
+    [images],
+  );
+
+  const loadCart = useCallback(async () => {
+    try {
+      const res = await cartAPI.get();
+      setCartItems(normalizeCartItems(res.data));
+    } catch (err) {
+      console.error("Failed to load cart", err);
+    }
+  }, [normalizeCartItems]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setCartItems([]);
+      return;
+    }
+    if (images.length === 0) return;
+    loadCart();
+  }, [isAuthenticated, images, loadCart]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      setPurchasedIds([]);
+      return;
+    }
+
+    if (user.role === 1) {
+      try {
+        const key = `imageshop_admin_purchases_${user.id}`;
+        const stored = sessionStorage.getItem(key);
+        const parsed = stored ? (JSON.parse(stored) as string[]) : [];
+        setPurchasedIds(Array.isArray(parsed) ? parsed : []);
+      } catch {
+        setPurchasedIds([]);
+      }
+      return;
+    }
+
+    if (!user.email) return;
+
+    purchasesAPI
+      .getAll()
+      .then((res) => {
+        const ids = res.data
+          .filter(
+            (p) => p.userEmail?.toLowerCase() === user.email?.toLowerCase(),
+          )
+          .map((p) => p.imageId);
+        setPurchasedIds(ids);
+      })
+      .catch((err) => {
+        console.error("Failed to load purchases", err);
+      });
+  }, [isAuthenticated, user]);
 
   const priceBounds = useMemo(() => {
     if (images.length === 0) return [0, 0] as [number, number];
@@ -130,6 +233,10 @@ function App() {
   };
 
   const handleToggleFavorite = (imageId: string) => {
+    if (!isAuthenticated) {
+      alert("Потрібно увійти, щоб додати у вподобані");
+      return;
+    }
     if (favorites.includes(imageId)) {
       setFavorites(favorites.filter((id) => id !== imageId));
     } else {
@@ -141,35 +248,82 @@ function App() {
     setTheme((prev) => (prev === "light" ? "dark" : "light"));
   };
 
-  const handleAddToCart = (image: Image) => {
-    const existingItem = cartItems.find((item) => item.imageId === image.id);
+  const handleAddToCart = async (image: Image) => {
+    if (!isAuthenticated) {
+      alert("Потрібно увійти, щоб додати до кошика");
+      return;
+    }
+    if (purchasedIds.includes(image.id)) {
+      alert("Це зображення вже придбане. Доступне завантаження.");
+      return;
+    }
 
-    if (existingItem) {
-      setCartItems(
-        cartItems.map((item) =>
-          item.imageId === image.id
-            ? { ...item, quantity: item.quantity + 1 }
-            : item,
-        ),
-      );
-    } else {
-      setCartItems([...cartItems, { imageId: image.id, image, quantity: 1 }]);
+    const existingItem = cartItems.find((item) => item.imageId === image.id);
+    try {
+      await cartAPI.addItem(image.id);
+      if (existingItem) {
+        setCartItems(
+          cartItems.map((item) =>
+            item.imageId === image.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item,
+          ),
+        );
+      } else {
+        setCartItems([...cartItems, { imageId: image.id, image, quantity: 1 }]);
+      }
+    } catch (err) {
+      console.error("Failed to add to cart", err);
+      alert("Не вдалося додати до кошика. Спробуйте ще раз.");
     }
   };
 
-  const handleRemoveFromCart = (imageId: string) => {
-    setCartItems(cartItems.filter((item) => item.imageId !== imageId));
+  const handleRemoveFromCart = async (imageId: string) => {
+    try {
+      await cartAPI.removeItem(imageId);
+    } catch (err) {
+      console.error("Failed to remove from cart", err);
+    } finally {
+      setCartItems(cartItems.filter((item) => item.imageId !== imageId));
+    }
   };
 
-  const handleQuantityChange = (imageId: string, quantity: number) => {
+  const handleQuantityChange = async (imageId: string, quantity: number) => {
+    const current = cartItems.find((item) => item.imageId === imageId);
+    if (!current) return;
+
     if (quantity <= 0) {
-      handleRemoveFromCart(imageId);
-    } else {
+      await handleRemoveFromCart(imageId);
+      return;
+    }
+
+    if (quantity > current.quantity) {
+      try {
+        await cartAPI.addItem(imageId);
+        setCartItems(
+          cartItems.map((item) =>
+            item.imageId === imageId
+              ? { ...item, quantity: item.quantity + 1 }
+              : item,
+          ),
+        );
+      } catch (err) {
+        console.error("Failed to increase cart quantity", err);
+      }
+      return;
+    }
+
+    try {
+      await cartAPI.removeItem(imageId);
       setCartItems(
         cartItems.map((item) =>
-          item.imageId === imageId ? { ...item, quantity } : item,
+          item.imageId === imageId
+            ? { ...item, quantity: Math.max(1, item.quantity - 1) }
+            : item,
         ),
       );
+    } catch (err) {
+      console.error("Failed to decrease cart quantity", err);
     }
   };
 
@@ -180,114 +334,287 @@ function App() {
 
   const handleBuyNow = async (image: Image) => {
     if (!isAuthenticated) {
-      alert("Потрібен логін для покупки");
+      alert("Потрібно увійти, щоб купити зображення");
       return;
     }
-    if ((user?.balance ?? 0) < image.price) {
-      alert("Недостатньо коштів. Поповніть баланс.");
+    setBuyImage(image);
+    setPurchaseError(null);
+  };
+
+  const handleConfirmPurchase = async () => {
+    if (!buyImage) return;
+    if (!isAuthenticated) {
+      setPurchaseError("Потрібен логін для покупки");
+      return;
+    }
+
+    if ((user?.balance ?? 0) < buyImage.price) {
+      setPurchaseError("Недостатньо коштів. Поповніть баланс.");
       return;
     }
 
     try {
-      await ordersAPI.buyImage(image.id);
-      await refreshUser();
-      setPurchasedIds((prev) =>
-        prev.includes(image.id) ? prev : [...prev, image.id],
-      );
-      alert("Покупка успішна! Тепер доступне HQ-завантаження.");
+      setPurchaseLoading(true);
+      setPurchaseError(null);
+      if (user?.role === 1) {
+        const nextIds = purchasedIds.includes(buyImage.id)
+          ? purchasedIds
+          : [...purchasedIds, buyImage.id];
+        setPurchasedIds(nextIds);
+        try {
+          const key = `imageshop_admin_purchases_${user.id}`;
+          sessionStorage.setItem(key, JSON.stringify(nextIds));
+        } catch {
+          /* ignore */
+        }
+        try {
+          const balanceKey = `imageshop_fake_balance_${user.id}`;
+          const nextBalance = Math.max(0, (user.balance ?? 0) - buyImage.price);
+          sessionStorage.setItem(balanceKey, String(nextBalance));
+        } catch {
+          /* ignore */
+        }
+        await refreshUser();
+      } else {
+        await ordersAPI.buyImage(buyImage.id);
+        await refreshUser();
+        setPurchasedIds((prev) =>
+          prev.includes(buyImage.id) ? prev : [...prev, buyImage.id],
+        );
+      }
+      setBuyImage(null);
+      setDownloadImage(buyImage);
     } catch (err) {
       console.error("Buy failed", err);
-      alert("Не вдалося купити. Спробуйте пізніше.");
+      setPurchaseError("Не вдалося купити. Спробуйте пізніше.");
+    } finally {
+      setPurchaseLoading(false);
     }
   };
 
+  const handleOpenView = (image: Image) => {
+    setViewImage(image);
+  };
+
+  const handleOpenDownload = (image: Image) => {
+    setDownloadImage(image);
+  };
+
   return (
-    <div className="app" data-theme={theme}>
-      <Header
-        cartCount={totalCartCount}
-        favoritesCount={favorites.length}
-        showFavorites={showFavorites}
-        onToggleFavorites={() => setShowFavorites((v) => !v)}
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        categories={categories}
-        selectedCategories={selectedCategories}
-        onToggleCategory={handleCategoryToggle}
-        currentUser={user}
-        theme={theme}
-        onToggleTheme={handleThemeToggle}
-        onLogout={logout}
-        isAuthenticated={isAuthenticated}
-      />
+    <>
+      <div className="app" data-theme={theme}>
+        <Header
+          cartCount={totalCartCount}
+          favoritesCount={favorites.length}
+          showFavorites={showFavorites}
+          onToggleFavorites={() => setShowFavorites((v) => !v)}
+          searchTerm={searchTerm}
+          onSearchChange={setSearchTerm}
+          categories={categories}
+          selectedCategories={selectedCategories}
+          onToggleCategory={handleCategoryToggle}
+          currentUser={user}
+          theme={theme}
+          onToggleTheme={handleThemeToggle}
+          onLogout={logout}
+          isAuthenticated={isAuthenticated}
+        />
 
-      {error && <div className="error-message">{error}</div>}
+        {error && <div className="error-message">{error}</div>}
 
-      <Routes>
-        <Route path="/login" element={<Login />} />
-        <Route
-          path="/"
-          element={
-            <Gallery
-              images={filteredImages}
-              categories={categories}
-              tags={tags}
-              selectedCategories={selectedCategories}
-              onCategoryToggle={handleCategoryToggle}
-              onClearCategories={() => setSelectedCategories([])}
-              selectedTags={selectedTags}
-              onTagToggle={handleTagToggle}
-              onClearTags={() => setSelectedTags([])}
-              priceRange={priceRange}
-              priceBounds={priceBounds}
-              onPriceRangeChange={setPriceRange}
-              favorites={favorites}
-              showFavorites={showFavorites}
-              onShowFavoritesChange={setShowFavorites}
-              loading={loading}
-              onAddToCart={handleAddToCart}
-              onToggleFavorite={handleToggleFavorite}
-              onBuyNow={handleBuyNow}
-              purchasedIds={purchasedIds}
-            />
-          }
-        />
-        <Route
-          path="/cart"
-          element={
-            <ProtectedRoute>
-              <CartPage
-                items={cartItems}
-                onRemove={handleRemoveFromCart}
-                onQuantityChange={handleQuantityChange}
-              />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/topup"
-          element={
-            <ProtectedRoute>
-              <TopUpPage onTopUp={topUpBalance} />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/admin"
-          element={
-            <ProtectedRoute requiredRole="Admin">
-              <AdminPage
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route
+            path="/"
+            element={
+              <Gallery
+                images={filteredImages}
                 categories={categories}
                 tags={tags}
-                onCreatedCategory={(cat) => setCategories([...categories, cat])}
-                onCreatedTag={(tag) => setTags([...tags, tag])}
-                onCreatedImage={(img) => setImages([...images, img])}
+                selectedCategories={selectedCategories}
+                onCategoryToggle={handleCategoryToggle}
+                onClearCategories={() => setSelectedCategories([])}
+                selectedTags={selectedTags}
+                onTagToggle={handleTagToggle}
+                onClearTags={() => setSelectedTags([])}
+                priceRange={priceRange}
+                priceBounds={priceBounds}
+                onPriceRangeChange={setPriceRange}
+                favorites={favorites}
+                showFavorites={showFavorites}
+                onShowFavoritesChange={setShowFavorites}
+                loading={loading}
+                onAddToCart={handleAddToCart}
+                onRemoveFromCart={handleRemoveFromCart}
+                onToggleFavorite={handleToggleFavorite}
+                onBuyNow={handleBuyNow}
+                onView={handleOpenView}
+                onDownload={handleOpenDownload}
+                purchasedIds={purchasedIds}
+                cartIds={cartItems.map((item) => item.imageId)}
               />
-            </ProtectedRoute>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </div>
+            }
+          />
+          <Route
+            path="/cart"
+            element={
+              <ProtectedRoute>
+                <CartPage
+                  items={cartItems}
+                  onRemove={handleRemoveFromCart}
+                  onQuantityChange={handleQuantityChange}
+                  onClear={() => setCartItems([])}
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/topup"
+            element={
+              <ProtectedRoute>
+                <TopUpPage onTopUp={topUpBalance} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedRoute requiredRole="Admin">
+                <AdminPage
+                  categories={categories}
+                  tags={tags}
+                  onCreatedCategory={(category) =>
+                    setCategories((prev) => [...prev, category])
+                  }
+                  onCreatedTag={(tag) => setTags((prev) => [...prev, tag])}
+                  onCreatedImage={(img) => setImages((prev) => [...prev, img])}
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
+      {viewImage && (
+        <div className="modal-overlay" onClick={() => setViewImage(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setViewImage(null)}>
+              ✕
+            </button>
+            <div className="modal-body">
+              <div className="modal-media">
+                <img
+                  src={
+                    purchasedIds.includes(viewImage.id)
+                      ? (viewImage.originalUrl ??
+                        viewImage.watermarkedUrl ??
+                        "")
+                      : (viewImage.watermarkedUrl ?? "")
+                  }
+                  alt={viewImage.title ?? "Image"}
+                />
+              </div>
+              <div className="modal-info">
+                <h2>{viewImage.title ?? "Untitled"}</h2>
+                <p className="muted">{viewImage.description ?? ""}</p>
+                <div className="modal-price">${viewImage.price.toFixed(2)}</div>
+                {purchasedIds.includes(viewImage.id) &&
+                  viewImage.originalUrl && (
+                    <a
+                      className="primary"
+                      href={viewImage.originalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Download original
+                    </a>
+                  )}
+                {purchasedIds.includes(viewImage.id) && (
+                  <button
+                    className="ghost-btn"
+                    onClick={() => handleOpenDownload(viewImage)}
+                  >
+                    Open download window
+                  </button>
+                )}
+                {!purchasedIds.includes(viewImage.id) && (
+                  <p className="notice">Оригінал доступний після покупки.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {downloadImage && (
+        <div className="modal-overlay" onClick={() => setDownloadImage(null)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="modal-close"
+              onClick={() => setDownloadImage(null)}
+            >
+              ✕
+            </button>
+            <div className="modal-body">
+              <div className="modal-media">
+                <img
+                  src={downloadImage.watermarkedUrl ?? ""}
+                  alt={downloadImage.title ?? "Image"}
+                />
+              </div>
+              <div className="modal-info">
+                <h2>{downloadImage.title ?? "Untitled"}</h2>
+                <p className="muted">{downloadImage.description ?? ""}</p>
+                <div className="modal-price">
+                  ${downloadImage.price.toFixed(2)}
+                </div>
+                {downloadImage.originalUrl ? (
+                  <a
+                    className="primary"
+                    href={downloadImage.originalUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Download original
+                  </a>
+                ) : (
+                  <p className="notice">
+                    Оригінал ще недоступний для завантаження.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {buyImage && (
+        <div className="modal-overlay" onClick={() => setBuyImage(null)}>
+          <div className="modal drawer" onClick={(e) => e.stopPropagation()}>
+            <button className="modal-close" onClick={() => setBuyImage(null)}>
+              ✕
+            </button>
+            <div className="modal-body">
+              <div className="modal-info">
+                <h2>Оплата</h2>
+                <p className="muted">{buyImage.title ?? "Untitled"}</p>
+                <div className="modal-price">
+                  До сплати: ${buyImage.price.toFixed(2)}
+                </div>
+                {purchaseError && (
+                  <div className="field-error">{purchaseError}</div>
+                )}
+                <button
+                  className="primary"
+                  onClick={handleConfirmPurchase}
+                  disabled={purchaseLoading}
+                >
+                  {purchaseLoading ? "Оплата..." : "Підтвердити оплату"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

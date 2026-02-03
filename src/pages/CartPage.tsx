@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { ordersAPI } from "../services/api";
+import { ordersAPI, cartAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import type { CartItemWithCount, Order, OrderStatus } from "../types";
 
@@ -7,9 +7,15 @@ interface CartPageProps {
   items: CartItemWithCount[];
   onRemove: (imageId: string) => void;
   onQuantityChange: (imageId: string, quantity: number) => void;
+  onClear: () => void;
 }
 
-export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
+export function CartPage({
+  items,
+  onRemove,
+  onQuantityChange,
+  onClear,
+}: CartPageProps) {
   const { user } = useAuth();
   const total = items.reduce(
     (sum, item) => sum + item.image.price * item.quantity,
@@ -45,6 +51,12 @@ export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
       };
 
       await ordersAPI.create(order);
+      try {
+        await cartAPI.clear();
+      } catch (err) {
+        console.warn("Failed to clear cart", err);
+      }
+      onClear();
 
       alert(
         `✓ Order placed!\nAmount: $${total.toFixed(2)}\n\nThank you for your purchase!`,
@@ -52,6 +64,16 @@ export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
     } catch (err) {
       console.error("Error placing order:", err);
       alert("Failed to place order. Please try again later.");
+    }
+  };
+
+  const handleClearAll = async () => {
+    try {
+      await cartAPI.clear();
+    } catch (err) {
+      console.warn("Failed to clear cart", err);
+    } finally {
+      onClear();
     }
   };
 
@@ -126,6 +148,9 @@ export function CartPage({ items, onRemove, onQuantityChange }: CartPageProps) {
           <div className="cart-summary">
             <div className="summary-card">
               <h2>Order Summary</h2>
+              <button className="clear-cart-btn" onClick={handleClearAll}>
+                Видалити всі
+              </button>
               <div className="summary-row">
                 <span className="summary-row-label">
                   Items ({items.length})

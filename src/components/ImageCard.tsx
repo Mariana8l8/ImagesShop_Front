@@ -4,41 +4,45 @@ import type { Image } from "../types";
 interface ImageCardProps {
   image: Image;
   onAddToCart: (image: Image) => void;
+  onRemoveFromCart: (imageId: string) => void;
   isFavorite: boolean;
   onToggleFavorite: (imageId: string) => void;
   onBuyNow: (image: Image) => void;
+  onView: (image: Image) => void;
+  onDownload: (image: Image) => void;
   isPurchased: boolean;
+  isInCart: boolean;
 }
 
 export function ImageCard({
   image,
   onAddToCart,
+  onRemoveFromCart,
   isFavorite,
   onToggleFavorite,
   onBuyNow,
+  onView,
+  onDownload,
   isPurchased,
+  isInCart,
 }: ImageCardProps) {
   const title = image.title ?? "Untitled";
   const description = image.description ?? "";
   const previewSrc = image.watermarkedUrl ?? image.originalUrl ?? "";
   const [isAdded, setIsAdded] = useState(false);
 
-  const handleClick = () => {
+  const handleAddToCart = () => {
     onAddToCart(image);
     setIsAdded(true);
-    setTimeout(() => setIsAdded(false), 1500);
-  };
-
-  const handleBuyNow = () => {
-    setIsAdded(true);
-    onBuyNow(image);
     setTimeout(() => setIsAdded(false), 1200);
   };
 
-  const handleView = () => {
-    if (image.originalUrl) {
-      window.open(image.originalUrl, "_blank", "noopener,noreferrer");
+  const handleCartClick = () => {
+    if (isInCart) {
+      onRemoveFromCart(image.id);
+      return;
     }
+    handleAddToCart();
   };
 
   return (
@@ -46,7 +50,7 @@ export function ImageCard({
       <div className="image-preview">
         <img src={previewSrc} alt={title} />
         <div className="card-top">
-          <span className="pill soft">HD</span>
+          <span className="pill soft">4K</span>
           <button
             className={`icon-btn ${isFavorite ? "active" : ""}`}
             onClick={() => onToggleFavorite(image.id)}
@@ -58,18 +62,35 @@ export function ImageCard({
         <div className="card-overlay">
           <div className="price-chip">${image.price.toFixed(2)}</div>
           <div className="card-actions">
-            <button className="ghost-btn" onClick={handleView}>
+            <button className="ghost-btn" onClick={() => onView(image)}>
               View
             </button>
             <button
-              className={`primary ${isAdded ? "added" : ""}`}
-              onClick={handleBuyNow}
+              className={`primary ${isPurchased ? "added" : ""}`}
+              onClick={() => onBuyNow(image)}
+              disabled={isPurchased}
             >
-              {isAdded ? "Processing" : "Buy now"}
+              {isPurchased ? "Purchased" : "Buy now"}
             </button>
-            <button className="ghost-btn" onClick={handleClick}>
-              {isPurchased ? "Download HQ" : "Add to cart"}
-            </button>
+            {isPurchased ? (
+              <button
+                className="download-icon-btn"
+                onClick={() => onDownload(image)}
+                aria-label="Download"
+              >
+                ⬇️
+              </button>
+            ) : (
+              <button
+                className={`cart-icon-btn ${isInCart ? "active" : ""} ${
+                  isAdded ? "pulse" : ""
+                }`}
+                onClick={handleCartClick}
+                aria-label={isInCart ? "In cart" : "Add to cart"}
+              >
+                🛒
+              </button>
+            )}
           </div>
         </div>
       </div>

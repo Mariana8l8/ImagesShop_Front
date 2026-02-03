@@ -33,39 +33,100 @@ export function AdminPage({
     categoryId: "",
   });
   const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [savingCategory, setSavingCategory] = useState(false);
+  const [savingTag, setSavingTag] = useState(false);
+  const [savingImage, setSavingImage] = useState(false);
 
   const submitCategory = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!categoryName.trim()) return;
-    const res = await categoriesAPI.create({ id: "", name: categoryName });
-    onCreatedCategory(res.data);
-    setCategoryName("");
-    setMessage("Category added");
+    const name = categoryName.trim();
+    if (!name || savingCategory) return;
+    setSavingCategory(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await categoriesAPI.create({ name });
+      onCreatedCategory(res.data);
+      setCategoryName("");
+      setMessage("Category added");
+    } catch (err) {
+      console.error("Failed to create category", err);
+      setError("Не вдалося створити категорію.");
+    } finally {
+      setSavingCategory(false);
+    }
   };
 
   const submitTag = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tagName.trim()) return;
-    const res = await tagsAPI.create({ id: "", name: tagName });
-    onCreatedTag(res.data);
-    setTagName("");
-    setMessage("Tag added");
+    const name = tagName.trim();
+    if (!name || savingTag) return;
+    setSavingTag(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await tagsAPI.create({ name });
+      onCreatedTag(res.data);
+      setTagName("");
+      setMessage("Tag added");
+    } catch (err) {
+      console.error("Failed to create tag", err);
+      setError("Не вдалося створити тег.");
+    } finally {
+      setSavingTag(false);
+    }
   };
 
   const submitImage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!imagePayload.categoryId) return;
-    const res = await imagesAPI.create({
-      id: "",
-      title: imagePayload.title ?? "",
-      description: imagePayload.description ?? "",
-      price: Number(imagePayload.price ?? 0),
-      watermarkedUrl: imagePayload.watermarkedUrl ?? "",
-      originalUrl: imagePayload.originalUrl ?? "",
-      categoryId: imagePayload.categoryId,
-    });
-    onCreatedImage(res.data);
-    setMessage("Image added");
+    const title = (imagePayload.title ?? "").trim();
+    const description = (imagePayload.description ?? "").trim();
+    const watermarkedUrl = (imagePayload.watermarkedUrl ?? "").trim();
+    const originalUrl = (imagePayload.originalUrl ?? "").trim();
+    const categoryId = imagePayload.categoryId ?? "";
+    const price = Number(imagePayload.price ?? 0);
+
+    if (
+      savingImage ||
+      !categoryId ||
+      !title ||
+      !watermarkedUrl ||
+      !originalUrl ||
+      Number.isNaN(price)
+    ) {
+      setError("Заповніть обов’язкові поля для зображення.");
+      return;
+    }
+
+    setSavingImage(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const res = await imagesAPI.create({
+        title,
+        description,
+        price,
+        watermarkedUrl,
+        originalUrl,
+        categoryId,
+      });
+      onCreatedImage(res.data);
+      setImagePayload({
+        title: "",
+        description: "",
+        price: 0,
+        watermarkedUrl: "",
+        originalUrl: "",
+        categoryId: "",
+      });
+      setMessage("Image added");
+    } catch (err) {
+      console.error("Failed to create image", err);
+      setError("Не вдалося створити зображення.");
+    } finally {
+      setSavingImage(false);
+    }
   };
 
   const exportPurchases = async () => {
@@ -92,6 +153,7 @@ export function AdminPage({
       </header>
 
       {message && <div className="success-banner">{message}</div>}
+      {error && <div className="error-banner">{error}</div>}
 
       <section className="admin-grid">
         <div className="admin-card">
@@ -103,8 +165,12 @@ export function AdminPage({
               value={categoryName}
               onChange={(e) => setCategoryName(e.target.value)}
             />
-            <button type="submit" className="primary">
-              Save
+            <button
+              type="submit"
+              className="primary"
+              disabled={savingCategory || !categoryName.trim()}
+            >
+              {savingCategory ? "Saving..." : "Save"}
             </button>
           </form>
           <ul className="mini-list">
@@ -123,8 +189,12 @@ export function AdminPage({
               value={tagName}
               onChange={(e) => setTagName(e.target.value)}
             />
-            <button type="submit" className="primary">
-              Save
+            <button
+              type="submit"
+              className="primary"
+              disabled={savingTag || !tagName.trim()}
+            >
+              {savingTag ? "Saving..." : "Save"}
             </button>
           </form>
           <ul className="mini-list">
@@ -195,8 +265,19 @@ export function AdminPage({
                 </option>
               ))}
             </select>
-            <button type="submit" className="primary">
-              Save image
+            <button
+              type="submit"
+              className="primary"
+              disabled={
+                savingImage ||
+                !(imagePayload.title ?? "").trim() ||
+                !(imagePayload.watermarkedUrl ?? "").trim() ||
+                !(imagePayload.originalUrl ?? "").trim() ||
+                !(imagePayload.categoryId ?? "").trim() ||
+                Number.isNaN(Number(imagePayload.price ?? 0))
+              }
+            >
+              {savingImage ? "Saving..." : "Save image"}
             </button>
           </form>
         </div>
