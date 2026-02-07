@@ -37,7 +37,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         if (userRef.current?.id)
           sessionStorage.removeItem(
-            `imageshop_fake_balance_${userRef.current.id}`,
+            `ImagesShop_fake_balance_${userRef.current.id}`,
           );
       } catch {
         /* ignore */
@@ -57,7 +57,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .me()
       .then((res) => {
         try {
-          const key = `imageshop_fake_balance_${res.data.id}`;
+          const key = `ImagesShop_fake_balance_${res.data.id}`;
           const stored = sessionStorage.getItem(key);
           if (stored) {
             const parsed = Number(stored);
@@ -79,7 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = await usersAPI.me();
       try {
-        const key = `imageshop_fake_balance_${res.data.id}`;
+        const key = `ImagesShop_fake_balance_${res.data.id}`;
         const stored = sessionStorage.getItem(key);
         if (stored) {
           const parsed = Number(stored);
@@ -127,7 +127,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } finally {
       try {
         if (user?.id)
-          sessionStorage.removeItem(`imageshop_fake_balance_${user.id}`);
+          sessionStorage.removeItem(`ImagesShop_fake_balance_${user.id}`);
       } catch {
         /* ignore */
       }
@@ -163,7 +163,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const updated: User = { ...user, balance: user.balance + safeAmount };
     setUser(updated);
     try {
-      const key = `imageshop_fake_balance_${user.id}`;
+      const key = `ImagesShop_fake_balance_${user.id}`;
       sessionStorage.setItem(key, String(updated.balance));
     } catch {
       /* ignore */

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Navigate } from "react-router-dom";
+import { useNavigate, Navigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import type { LoginRequest } from "../types";
 import { UserRole } from "../types";
@@ -23,11 +23,17 @@ export function Login() {
 
   const validate = () => {
     const nextErrors: typeof errors = {};
-    if (!form.email) nextErrors.email = "Email is required";
-    if (form.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.email)) {
+    const email = (form.email ?? "").trim();
+    const password = form.password ?? "";
+
+    if (!email) nextErrors.email = "Email is required";
+    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
       nextErrors.email = "Invalid email";
     }
-    if (!form.password) nextErrors.password = "Password is required";
+    if (!password) nextErrors.password = "Password is required";
+    if (password && password.length < 6) {
+      nextErrors.password = "Password must be at least 6 characters";
+    }
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
@@ -91,6 +97,19 @@ export function Login() {
             {loading ? "Signing in..." : "Sign in"}
           </button>
         </form>
+        <div style={{ marginTop: 12, textAlign: "center" }}>
+          <Link
+            to="/register"
+            style={{
+              color: "var(--primary)",
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            Don&apos;t have an account? Join now
+          </Link>
+        </div>
       </div>
     </main>
   );

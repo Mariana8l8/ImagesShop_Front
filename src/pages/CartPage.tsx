@@ -1,13 +1,16 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ordersAPI, cartAPI } from "../services/api";
 import { useAuth } from "../context/AuthContext";
-import type { CartItemWithCount, Order, OrderStatus } from "../types";
+import { useNotifications } from "../context/NotificationContext";
+import type { CartItemWithCount } from "../types";
 
 interface CartPageProps {
   items: CartItemWithCount[];
-  onRemove: (imageId: string) => void;
-  onQuantityChange: (imageId: string, quantity: number) => void;
+  onRemove: (imageId: string) => void | Promise<void>;
+  onQuantityChange: (imageId: string, quantity: number) => void | Promise<void>;
   onClear: () => void;
+  onPurchased?: (imageIds: string[]) => void;
 }
 
 export function CartPage({
@@ -15,42 +18,74 @@ export function CartPage({
   onRemove,
   onQuantityChange,
   onClear,
+  onPurchased,
 }: CartPageProps) {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { notify } = useNotifications();
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
   const total = items.reduce(
     (sum, item) => sum + item.image.price * item.quantity,
     0,
   );
 
   const handleCheckout = async () => {
-    if (items.length === 0) {
-      alert("Cart is empty!");
+    setCheckoutError(null);
+    if (items.length === 0) return;
+
+    const userId = user?.id;
+    if (!userId) {
+      setCheckoutError("Please sign in to complete the purchase");
       return;
     }
 
+    const balance = user?.balance ?? 0;
+    if (balance < total) {
+      setCheckoutError(
+        `Insufficient funds. Required $${total.toFixed(2)}, balance $${balance.toFixed(2)}.`,
+      );
+      return;
+    }
+
+    setCheckoutLoading(true);
     try {
-      const userId = user?.id;
-      if (!userId) {
-        alert("Потрібно увійти, щоб оформити замовлення");
-        return;
+      const purchasedImageIds: string[] = [];
+
+      if (user.role === 1) {
+        try {
+          const key = `ImagesShop_admin_purchases_${user.id}`;
+          const stored = sessionStorage.getItem(key);
+          const parsed = stored ? (JSON.parse(stored) as string[]) : [];
+          const next = Array.from(
+            new Set([
+              ...(Array.isArray(parsed) ? parsed : []),
+              ...items.map((i) => i.imageId),
+            ]),
+          );
+          sessionStorage.setItem(key, JSON.stringify(next));
+        } catch {
+          /* ignore */
+        }
+
+        try {
+          const balanceKey = `ImagesShop_fake_balance_${user.id}`;
+          const nextBalance = Math.max(0, balance - total);
+          sessionStorage.setItem(balanceKey, String(nextBalance));
+        } catch {
+          /* ignore */
+        }
+
+        purchasedImageIds.push(...items.map((i) => i.imageId));
+      } else {
+        for (const item of items) {
+          const qty = Math.max(1, item.quantity);
+          for (let i = 0; i < qty; i += 1) {
+            await ordersAPI.buyImage(item.imageId);
+          }
+          purchasedImageIds.push(item.imageId);
+        }
       }
 
-      const order: Order = {
-        id: crypto.randomUUID(),
-        userId,
-        createdAt: new Date().toISOString(),
-        status: 0 as OrderStatus,
-        totalAmount: total,
-        currency: "USD",
-        notes: "Order from website",
-        items: items.map((item) => ({
-          id: crypto.randomUUID(),
-          orderId: "",
-          imageId: item.imageId,
-        })),
-      };
-
-      await ordersAPI.create(order);
       try {
         await cartAPI.clear();
       } catch (err) {
@@ -58,12 +93,17 @@ export function CartPage({
       }
       onClear();
 
-      alert(
-        `✓ Order placed!\nAmount: $${total.toFixed(2)}\n\nThank you for your purchase!`,
-      );
+      await refreshUser();
+      onPurchased?.(purchasedImageIds);
+      notify(`Purchased! Amount: $${total.toFixed(2)}`, {
+        type: "success",
+        title: "Order completed",
+      });
     } catch (err) {
-      console.error("Error placing order:", err);
-      alert("Failed to place order. Please try again later.");
+      console.error("Checkout failed:", err);
+      setCheckoutError("Failed to complete purchase. Please try again.");
+    } finally {
+      setCheckoutLoading(false);
     }
   };
 
@@ -149,7 +189,7 @@ export function CartPage({
             <div className="summary-card">
               <h2>Order Summary</h2>
               <button className="clear-cart-btn" onClick={handleClearAll}>
-                Видалити всі
+                Remove all
               </button>
               <div className="summary-row">
                 <span className="summary-row-label">
@@ -165,7 +205,16 @@ export function CartPage({
                 <span>Total</span>
                 <span>${total.toFixed(2)}</span>
               </div>
-              <button className="checkout-btn" onClick={handleCheckout}>
+              {checkoutError && (
+                <div className="field-error" style={{ marginTop: 10 }}>
+                  {checkoutError}
+                </div>
+              )}
+              <button
+                className="checkout-btn"
+                onClick={handleCheckout}
+                disabled={checkoutLoading}
+              >
                 💳 Proceed to Checkout
               </button>
               <Link

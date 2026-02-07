@@ -1,6 +1,6 @@
 export interface Category {
   id: string;
-  name: string | null;
+  name: string;
 }
 
 export interface Image {
@@ -72,13 +72,41 @@ export interface PurchaseHistory {
 
 export interface Tag {
   id: string;
-  name: string | null;
+  name: string;
 }
 
 export interface RegisterRequest {
-  name?: string | null;
+  name?: string;
   email?: string | null;
   password?: string | null;
+  confirmPassword?: string | null;
+}
+
+export interface VerifyEmailCodeRequest {
+  email: string;
+  code: string;
+}
+
+export interface CompleteRegistrationRequest {
+  email: string;
+  code: string;
+  password: string;
+  confirmPassword: string;
+  name?: string;
+}
+
+export interface ResendVerificationCodeRequest {
+  email: string;
+}
+
+export interface UpdateNameRequest {
+  name: string;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
 }
 
 export interface LoginRequest {

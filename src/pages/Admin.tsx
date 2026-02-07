@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Category, Image, Tag } from "../types";
 import {
   categoriesAPI,
@@ -22,6 +23,7 @@ export function AdminPage({
   onCreatedTag,
   onCreatedImage,
 }: AdminPageProps) {
+  const navigate = useNavigate();
   const [categoryName, setCategoryName] = useState("");
   const [tagName, setTagName] = useState("");
   const [imagePayload, setImagePayload] = useState<Partial<Image>>({
@@ -32,16 +34,51 @@ export function AdminPage({
     originalUrl: "",
     categoryId: "",
   });
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [tagError, setTagError] = useState<string | null>(null);
+  const [imageErrors, setImageErrors] = useState<{
+    title?: string;
+    description?: string;
+    price?: string;
+    watermarkedUrl?: string;
+    originalUrl?: string;
+    categoryId?: string;
+  }>({});
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [savingCategory, setSavingCategory] = useState(false);
   const [savingTag, setSavingTag] = useState(false);
   const [savingImage, setSavingImage] = useState(false);
 
+  const isValidUrl = (value: string) => {
+    try {
+      const url = new URL(value);
+      return Boolean(url.protocol === "http:" || url.protocol === "https:");
+    } catch {
+      return false;
+    }
+  };
+
   const submitCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = categoryName.trim();
-    if (!name || savingCategory) return;
+    setCategoryError(null);
+    if (savingCategory) return;
+    if (!name) {
+      setCategoryError("Category name is required");
+      return;
+    }
+    if (name.length < 2) {
+      setCategoryError("Category name must be at least 2 characters");
+      return;
+    }
+    const exists = categories.some(
+      (cat) => cat.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (exists) {
+      setCategoryError("Category already exists");
+      return;
+    }
     setSavingCategory(true);
     setError(null);
     setMessage(null);
@@ -52,7 +89,7 @@ export function AdminPage({
       setMessage("Category added");
     } catch (err) {
       console.error("Failed to create category", err);
-      setError("Не вдалося створити категорію.");
+      setError("Failed to create category.");
     } finally {
       setSavingCategory(false);
     }
@@ -61,7 +98,23 @@ export function AdminPage({
   const submitTag = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = tagName.trim();
-    if (!name || savingTag) return;
+    setTagError(null);
+    if (savingTag) return;
+    if (!name) {
+      setTagError("Tag name is required");
+      return;
+    }
+    if (name.length < 2) {
+      setTagError("Tag name must be at least 2 characters");
+      return;
+    }
+    const exists = tags.some(
+      (tag) => tag.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (exists) {
+      setTagError("Tag already exists");
+      return;
+    }
     setSavingTag(true);
     setError(null);
     setMessage(null);
@@ -72,7 +125,7 @@ export function AdminPage({
       setMessage("Tag added");
     } catch (err) {
       console.error("Failed to create tag", err);
-      setError("Не вдалося створити тег.");
+      setError("Failed to create tag.");
     } finally {
       setSavingTag(false);
     }
@@ -87,15 +140,37 @@ export function AdminPage({
     const categoryId = imagePayload.categoryId ?? "";
     const price = Number(imagePayload.price ?? 0);
 
-    if (
-      savingImage ||
-      !categoryId ||
-      !title ||
-      !watermarkedUrl ||
-      !originalUrl ||
-      Number.isNaN(price)
-    ) {
-      setError("Заповніть обов’язкові поля для зображення.");
+    if (savingImage) return;
+
+    const nextErrors: typeof imageErrors = {};
+    if (!title) nextErrors.title = "Title is required";
+    if (title && title.length < 3) {
+      nextErrors.title = "Title must be at least 3 characters";
+    }
+    if (description && description.length < 10) {
+      nextErrors.description = "Description must be at least 10 characters";
+    }
+    if (!watermarkedUrl) {
+      nextErrors.watermarkedUrl = "Watermarked URL is required";
+    } else if (!isValidUrl(watermarkedUrl)) {
+      nextErrors.watermarkedUrl = "Enter a valid URL";
+    }
+    if (!originalUrl) {
+      nextErrors.originalUrl = "Original URL is required";
+    } else if (!isValidUrl(originalUrl)) {
+      nextErrors.originalUrl = "Enter a valid URL";
+    }
+    if (!categoryId) nextErrors.categoryId = "Choose a category";
+    if (Number.isNaN(price)) {
+      nextErrors.price = "Enter a valid price";
+    } else if (price <= 0) {
+      nextErrors.price = "Price must be greater than 0";
+    }
+
+    setImageErrors(nextErrors);
+
+    if (Object.keys(nextErrors).length > 0) {
+      setError("Fill in the required image fields.");
       return;
     }
 
@@ -120,10 +195,11 @@ export function AdminPage({
         originalUrl: "",
         categoryId: "",
       });
+      setImageErrors({});
       setMessage("Image added");
     } catch (err) {
       console.error("Failed to create image", err);
-      setError("Не вдалося створити зображення.");
+      setError("Failed to create image.");
     } finally {
       setSavingImage(false);
     }
@@ -147,9 +223,18 @@ export function AdminPage({
           <h1>Admin Panel</h1>
           <p className="muted">Manage images, categories and tags.</p>
         </div>
-        <button onClick={exportPurchases} className="secondary">
-          Export purchases to XLSX
-        </button>
+        <div className="admin-header-actions">
+          <button
+            type="button"
+            className="secondary"
+            onClick={() => navigate("/admin/edit-pictures")}
+          >
+            Edit existing pictures
+          </button>
+          <button onClick={exportPurchases} className="secondary">
+            Export purchases to XLSX
+          </button>
+        </div>
       </header>
 
       {message && <div className="success-banner">{message}</div>}
@@ -165,6 +250,9 @@ export function AdminPage({
               value={categoryName}
               onChange={(e) => setCategoryName(e.target.value)}
             />
+            {categoryError && (
+              <div className="field-error">{categoryError}</div>
+            )}
             <button
               type="submit"
               className="primary"
@@ -189,6 +277,7 @@ export function AdminPage({
               value={tagName}
               onChange={(e) => setTagName(e.target.value)}
             />
+            {tagError && <div className="field-error">{tagError}</div>}
             <button
               type="submit"
               className="primary"
@@ -215,6 +304,9 @@ export function AdminPage({
                 setImagePayload((p) => ({ ...p, title: e.target.value }))
               }
             />
+            {imageErrors.title && (
+              <div className="field-error">{imageErrors.title}</div>
+            )}
             <textarea
               placeholder="Description"
               value={imagePayload.description ?? ""}
@@ -222,6 +314,9 @@ export function AdminPage({
                 setImagePayload((p) => ({ ...p, description: e.target.value }))
               }
             />
+            {imageErrors.description && (
+              <div className="field-error">{imageErrors.description}</div>
+            )}
             <input
               type="number"
               placeholder="Price"
@@ -233,6 +328,9 @@ export function AdminPage({
                 }))
               }
             />
+            {imageErrors.price && (
+              <div className="field-error">{imageErrors.price}</div>
+            )}
             <input
               type="url"
               placeholder="Watermarked URL"
@@ -244,6 +342,9 @@ export function AdminPage({
                 }))
               }
             />
+            {imageErrors.watermarkedUrl && (
+              <div className="field-error">{imageErrors.watermarkedUrl}</div>
+            )}
             <input
               type="url"
               placeholder="Original URL"
@@ -252,6 +353,9 @@ export function AdminPage({
                 setImagePayload((p) => ({ ...p, originalUrl: e.target.value }))
               }
             />
+            {imageErrors.originalUrl && (
+              <div className="field-error">{imageErrors.originalUrl}</div>
+            )}
             <select
               value={imagePayload.categoryId ?? ""}
               onChange={(e) =>
@@ -265,6 +369,9 @@ export function AdminPage({
                 </option>
               ))}
             </select>
+            {imageErrors.categoryId && (
+              <div className="field-error">{imageErrors.categoryId}</div>
+            )}
             <button
               type="submit"
               className="primary"

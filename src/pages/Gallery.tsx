@@ -71,7 +71,7 @@ export function Gallery({
     <main className="gallery-page">
       <section className="gallery-header">
         <div>
-          <h1>Image Marketplace</h1>
+          <h1>Images Marketplace</h1>
           <p>Curated visuals for modern products and brands.</p>
         </div>
         <div className="result-meta">
@@ -163,7 +163,7 @@ export function Gallery({
             </div>
           </div>
 
-          <div className="panel-section">
+          <div className="panel-section favorites-toggle">
             <label className="checkbox-item">
               <input
                 type="checkbox"

@@ -4,8 +4,11 @@ import { Header } from "./components/Header";
 import { Gallery } from "./pages/Gallery";
 import { CartPage } from "./pages/CartPage";
 import { AdminPage } from "./pages/Admin";
+import { AdminEditPicturesPage } from "./pages/AdminEditPictures";
 import { Login } from "./pages/Login";
+import { Register } from "./pages/Register";
 import { TopUpPage } from "./pages/TopUp";
+import { ProfilePage } from "./pages/Profile";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import {
   imagesAPI,
@@ -16,6 +19,7 @@ import {
   purchasesAPI,
 } from "./services/api";
 import { useAuth } from "./context/AuthContext";
+import { useNotifications } from "./context/NotificationContext";
 import type {
   Image,
   CartItemWithCount,
@@ -44,11 +48,14 @@ function App() {
   const [viewImage, setViewImage] = useState<Image | null>(null);
   const [buyImage, setBuyImage] = useState<Image | null>(null);
   const [downloadImage, setDownloadImage] = useState<Image | null>(null);
+  const [downloadPngLoading, setDownloadPngLoading] = useState(false);
+  const [downloadPngError, setDownloadPngError] = useState<string | null>(null);
   const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [purchaseLoading, setPurchaseLoading] = useState(false);
 
   const { user, isAuthenticated, topUpBalance, logout, refreshUser } =
     useAuth();
+  const { notify } = useNotifications();
 
   useEffect(() => {
     loadData();
@@ -73,7 +80,7 @@ function App() {
       setError(null);
     } catch (err) {
       console.error("Error loading images:", err);
-      setError("Не вдалося завантажити зображення. Перевірте API.");
+      setError("Failed to load images. Check the API.");
       setImages([]);
     } finally {
       setLoading(false);
@@ -137,7 +144,7 @@ function App() {
 
     if (user.role === 1) {
       try {
-        const key = `imageshop_admin_purchases_${user.id}`;
+        const key = `ImagesShop_admin_purchases_${user.id}`;
         const stored = sessionStorage.getItem(key);
         const parsed = stored ? (JSON.parse(stored) as string[]) : [];
         setPurchasedIds(Array.isArray(parsed) ? parsed : []);
@@ -234,7 +241,9 @@ function App() {
 
   const handleToggleFavorite = (imageId: string) => {
     if (!isAuthenticated) {
-      alert("Потрібно увійти, щоб додати у вподобані");
+      notify("Please sign in to add to favorites", {
+        type: "warning",
+      });
       return;
     }
     if (favorites.includes(imageId)) {
@@ -250,11 +259,15 @@ function App() {
 
   const handleAddToCart = async (image: Image) => {
     if (!isAuthenticated) {
-      alert("Потрібно увійти, щоб додати до кошика");
+      notify("Please sign in to add to cart", {
+        type: "warning",
+      });
       return;
     }
     if (purchasedIds.includes(image.id)) {
-      alert("Це зображення вже придбане. Доступне завантаження.");
+      notify("This image is already purchased. Download is available.", {
+        type: "info",
+      });
       return;
     }
 
@@ -274,7 +287,9 @@ function App() {
       }
     } catch (err) {
       console.error("Failed to add to cart", err);
-      alert("Не вдалося додати до кошика. Спробуйте ще раз.");
+      notify("Failed to add to cart. Please try again.", {
+        type: "error",
+      });
     }
   };
 
@@ -334,7 +349,9 @@ function App() {
 
   const handleBuyNow = async (image: Image) => {
     if (!isAuthenticated) {
-      alert("Потрібно увійти, щоб купити зображення");
+      notify("Please sign in to buy an image", {
+        type: "warning",
+      });
       return;
     }
     setBuyImage(image);
@@ -344,12 +361,12 @@ function App() {
   const handleConfirmPurchase = async () => {
     if (!buyImage) return;
     if (!isAuthenticated) {
-      setPurchaseError("Потрібен логін для покупки");
+      setPurchaseError("You need to sign in to complete the purchase");
       return;
     }
 
     if ((user?.balance ?? 0) < buyImage.price) {
-      setPurchaseError("Недостатньо коштів. Поповніть баланс.");
+      setPurchaseError("Insufficient funds. Top up your balance.");
       return;
     }
 
@@ -362,13 +379,13 @@ function App() {
           : [...purchasedIds, buyImage.id];
         setPurchasedIds(nextIds);
         try {
-          const key = `imageshop_admin_purchases_${user.id}`;
+          const key = `ImagesShop_admin_purchases_${user.id}`;
           sessionStorage.setItem(key, JSON.stringify(nextIds));
         } catch {
           /* ignore */
         }
         try {
-          const balanceKey = `imageshop_fake_balance_${user.id}`;
+          const balanceKey = `ImagesShop_fake_balance_${user.id}`;
           const nextBalance = Math.max(0, (user.balance ?? 0) - buyImage.price);
           sessionStorage.setItem(balanceKey, String(nextBalance));
         } catch {
@@ -386,7 +403,7 @@ function App() {
       setDownloadImage(buyImage);
     } catch (err) {
       console.error("Buy failed", err);
-      setPurchaseError("Не вдалося купити. Спробуйте пізніше.");
+      setPurchaseError("Purchase failed. Please try again later.");
     } finally {
       setPurchaseLoading(false);
     }
@@ -398,6 +415,97 @@ function App() {
 
   const handleOpenDownload = (image: Image) => {
     setDownloadImage(image);
+  };
+
+  const sanitizeFilename = (value: string) =>
+    value
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, "-")
+      .replace(/\s+/g, " ")
+      .slice(0, 80);
+
+  const handleDownloadAsPng = async () => {
+    if (!downloadImage?.originalUrl) return;
+
+    setDownloadPngError(null);
+    setDownloadPngLoading(true);
+
+    try {
+      const res = await fetch(downloadImage.originalUrl, {
+        mode: "cors",
+        credentials: "omit",
+      });
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch image");
+      }
+
+      const sourceBlob = await res.blob();
+      const sourceUrl = URL.createObjectURL(sourceBlob);
+      const img = new Image();
+
+      const decoded = await new Promise<HTMLImageElement>((resolve, reject) => {
+        img.onload = () => resolve(img);
+        img.onerror = () => reject(new Error("Failed to decode image"));
+        img.src = sourceUrl;
+      });
+
+      const canvas = document.createElement("canvas");
+      canvas.width = decoded.naturalWidth || decoded.width;
+      canvas.height = decoded.naturalHeight || decoded.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas is not supported");
+      ctx.drawImage(decoded, 0, 0);
+
+      const pngBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (b) => {
+            if (!b) reject(new Error("Failed to export PNG"));
+            else resolve(b);
+          },
+          "image/png",
+          1,
+        );
+      });
+
+      const filenameBase = sanitizeFilename(downloadImage.title ?? "image");
+      const filename = `${filenameBase || "image"}.png`;
+      const pngUrl = URL.createObjectURL(pngBlob);
+      const a = document.createElement("a");
+      a.href = pngUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(pngUrl);
+      URL.revokeObjectURL(sourceUrl);
+    } catch (err) {
+      console.error("Download PNG failed", err);
+      setDownloadPngError("Failed to download PNG. Please try again.");
+    } finally {
+      setDownloadPngLoading(false);
+    }
+  };
+
+  const handlePurchasedFromCart = (imageIds: string[]) => {
+    if (!user || imageIds.length === 0) return;
+    const unique = Array.from(new Set(imageIds));
+
+    if (user.role === 1) {
+      try {
+        const key = `ImagesShop_admin_purchases_${user.id}`;
+        const stored = sessionStorage.getItem(key);
+        const parsed = stored ? (JSON.parse(stored) as string[]) : [];
+        const merged = Array.from(
+          new Set([...(Array.isArray(parsed) ? parsed : []), ...unique]),
+        );
+        sessionStorage.setItem(key, JSON.stringify(merged));
+      } catch {
+        /* ignore */
+      }
+    }
+
+    setPurchasedIds((prev) => Array.from(new Set([...prev, ...unique])));
   };
 
   return (
@@ -424,35 +532,40 @@ function App() {
 
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
           <Route
             path="/"
             element={
-              <Gallery
-                images={filteredImages}
-                categories={categories}
-                tags={tags}
-                selectedCategories={selectedCategories}
-                onCategoryToggle={handleCategoryToggle}
-                onClearCategories={() => setSelectedCategories([])}
-                selectedTags={selectedTags}
-                onTagToggle={handleTagToggle}
-                onClearTags={() => setSelectedTags([])}
-                priceRange={priceRange}
-                priceBounds={priceBounds}
-                onPriceRangeChange={setPriceRange}
-                favorites={favorites}
-                showFavorites={showFavorites}
-                onShowFavoritesChange={setShowFavorites}
-                loading={loading}
-                onAddToCart={handleAddToCart}
-                onRemoveFromCart={handleRemoveFromCart}
-                onToggleFavorite={handleToggleFavorite}
-                onBuyNow={handleBuyNow}
-                onView={handleOpenView}
-                onDownload={handleOpenDownload}
-                purchasedIds={purchasedIds}
-                cartIds={cartItems.map((item) => item.imageId)}
-              />
+              isAuthenticated && user?.role === 1 ? (
+                <Navigate to="/admin" replace />
+              ) : (
+                <Gallery
+                  images={filteredImages}
+                  categories={categories}
+                  tags={tags}
+                  selectedCategories={selectedCategories}
+                  onCategoryToggle={handleCategoryToggle}
+                  onClearCategories={() => setSelectedCategories([])}
+                  selectedTags={selectedTags}
+                  onTagToggle={handleTagToggle}
+                  onClearTags={() => setSelectedTags([])}
+                  priceRange={priceRange}
+                  priceBounds={priceBounds}
+                  onPriceRangeChange={setPriceRange}
+                  favorites={favorites}
+                  showFavorites={showFavorites}
+                  onShowFavoritesChange={setShowFavorites}
+                  loading={loading}
+                  onAddToCart={handleAddToCart}
+                  onRemoveFromCart={handleRemoveFromCart}
+                  onToggleFavorite={handleToggleFavorite}
+                  onBuyNow={handleBuyNow}
+                  onView={handleOpenView}
+                  onDownload={handleOpenDownload}
+                  purchasedIds={purchasedIds}
+                  cartIds={cartItems.map((item) => item.imageId)}
+                />
+              )
             }
           />
           <Route
@@ -464,6 +577,7 @@ function App() {
                   onRemove={handleRemoveFromCart}
                   onQuantityChange={handleQuantityChange}
                   onClear={() => setCartItems([])}
+                  onPurchased={handlePurchasedFromCart}
                 />
               </ProtectedRoute>
             }
@@ -473,6 +587,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <TopUpPage onTopUp={topUpBalance} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/profile"
+            element={
+              <ProtectedRoute>
+                <ProfilePage />
               </ProtectedRoute>
             }
           />
@@ -488,6 +610,21 @@ function App() {
                   }
                   onCreatedTag={(tag) => setTags((prev) => [...prev, tag])}
                   onCreatedImage={(img) => setImages((prev) => [...prev, img])}
+                />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/edit-pictures"
+            element={
+              <ProtectedRoute requiredRole="Admin">
+                <AdminEditPicturesPage
+                  images={images}
+                  onUpdatedImage={(img) =>
+                    setImages((prev) =>
+                      prev.map((p) => (p.id === img.id ? img : p)),
+                    )
+                  }
                 />
               </ProtectedRoute>
             }
@@ -538,7 +675,9 @@ function App() {
                   </button>
                 )}
                 {!purchasedIds.includes(viewImage.id) && (
-                  <p className="notice">Оригінал доступний після покупки.</p>
+                  <p className="notice">
+                    Original is available after purchase.
+                  </p>
                 )}
               </div>
             </div>
@@ -567,18 +706,20 @@ function App() {
                 <div className="modal-price">
                   ${downloadImage.price.toFixed(2)}
                 </div>
+                {downloadPngError && (
+                  <div className="field-error">{downloadPngError}</div>
+                )}
                 {downloadImage.originalUrl ? (
-                  <a
+                  <button
                     className="primary"
-                    href={downloadImage.originalUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={handleDownloadAsPng}
+                    disabled={downloadPngLoading}
                   >
-                    Download original
-                  </a>
+                    {downloadPngLoading ? "Downloading..." : "Download PNG"}
+                  </button>
                 ) : (
                   <p className="notice">
-                    Оригінал ще недоступний для завантаження.
+                    Original is not available for download yet.
                   </p>
                 )}
               </div>
@@ -593,11 +734,17 @@ function App() {
               ✕
             </button>
             <div className="modal-body">
+              <div className="modal-media">
+                <img
+                  src={buyImage.watermarkedUrl ?? ""}
+                  alt={buyImage.title ?? "Image"}
+                />
+              </div>
               <div className="modal-info">
-                <h2>Оплата</h2>
+                <h2>Payment</h2>
                 <p className="muted">{buyImage.title ?? "Untitled"}</p>
                 <div className="modal-price">
-                  До сплати: ${buyImage.price.toFixed(2)}
+                  Amount due: ${buyImage.price.toFixed(2)}
                 </div>
                 {purchaseError && (
                   <div className="field-error">{purchaseError}</div>
@@ -607,7 +754,7 @@ function App() {
                   onClick={handleConfirmPurchase}
                   disabled={purchaseLoading}
                 >
-                  {purchaseLoading ? "Оплата..." : "Підтвердити оплату"}
+                  {purchaseLoading ? "Processing..." : "Confirm payment"}
                 </button>
               </div>
             </div>

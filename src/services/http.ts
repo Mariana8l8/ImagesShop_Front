@@ -32,8 +32,8 @@ let isRefreshing = false;
 let refreshPromise: Promise<string | null> | null = null;
 let logoutHandler: (() => void) | null = null;
 
-const ACCESS_KEY = "imageshop_access_token";
-const REFRESH_KEY = "imageshop_refresh_token";
+const ACCESS_KEY = "ImagesShop_access_token";
+const REFRESH_KEY = "ImagesShop_refresh_token";
 
 const persistTokens = (tokens: AuthTokens | null) => {
   if (!tokens?.accessToken) {

@@ -41,6 +41,7 @@ export function Header({
   const isLoginPage = location.pathname === "/login";
   const isTopUpPage = location.pathname === "/topup";
   const isAdminPage = location.pathname === "/admin";
+  const isProfilePage = location.pathname === "/profile";
   const { fakeTopUp } = useAuth();
 
   const handleFakeTopUp = (amt = 100) => {
@@ -54,11 +55,11 @@ export function Header({
           <Link to="/" className="logo-link">
             <div className="logo">
               <span className="logo-icon">▢</span>
-              <h1>ImageShop</h1>
+              <h1>ImagesShop</h1>
             </div>
           </Link>
 
-          {!isLoginPage && !isTopUpPage && !isAdminPage && (
+          {!isLoginPage && !isTopUpPage && !isAdminPage && !isProfilePage && (
             <div className="header-search">
               <input
                 type="text"
@@ -71,7 +72,7 @@ export function Header({
         </div>
 
         <div className="header-actions">
-          {!isLoginPage && !isTopUpPage && !isAdminPage && (
+          {!isLoginPage && !isTopUpPage && !isAdminPage && !isProfilePage && (
             <>
               <div className="dropdown">
                 <button
@@ -119,7 +120,7 @@ export function Header({
             {theme === "light" ? "🌙" : "☀️"}
           </button>
 
-          {isAuthenticated ? (
+          {isAuthenticated && !isProfilePage ? (
             <div className="user-block">
               <div className="balance">
                 <span className="balance-label">Balance</span>
@@ -152,12 +153,17 @@ export function Header({
                   Logout
                 </button>
               )}
-              <div className="avatar">
-                {currentUser?.name?.charAt(0) ?? currentUser?.email?.[0] ?? "U"}
-              </div>
+              <Link to="/profile" className="avatar-link" aria-label="Profile">
+                <div className="avatar">
+                  {currentUser?.name?.charAt(0) ??
+                    currentUser?.email?.[0] ??
+                    "U"}
+                </div>
+              </Link>
             </div>
           ) : (
-            !isLoginPage && (
+            !isLoginPage &&
+            !isProfilePage && (
               <Link to="/login" className="text-link">
                 Login
               </Link>
